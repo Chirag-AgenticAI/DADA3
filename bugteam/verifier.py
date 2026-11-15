@@ -40,16 +40,17 @@ Then call exactly one of these tools, and stop:
 
 
 # TODO 1.3: both tools must end the verifier's run when they are called.
+@tool(return_direct=True)
 def accept_fix(evidence: str) -> str:
     """Accept the fix. evidence: the commands you ran and what they showed, briefly."""
     # your code here
-    raise NotImplementedError
+    return "Fix accepted."
 
-
+@tool(return_direct=True)
 def transfer_to_fixer(reason: str) -> str:
     """Send the fix back to the fixer. reason: what is wrong, with the failing test and its output."""
     # your code here
-    raise NotImplementedError
+    return "Sent back to the fixer."
 
 
 def decision(messages):
@@ -57,7 +58,15 @@ def decision(messages):
     ('none', '') if it stopped without calling either."""
     # TODO 1.3
     # your code here
-    raise NotImplementedError
+    for m in messages[::-1]:
+        calls = getattr(m, "tool_calls", None) or []
+
+        for call in calls:
+            if call["name"] == "accept_fix":
+                return ("accept", call["args"]["evidence"])
+            if call["name"] == "transfer_to_fixer":
+                return ("reject", call["args"]["reason"])
+    return ("none", "")
 
 
 def verify(issue, fix):
@@ -66,4 +75,28 @@ def verify(issue, fix):
     Returns {"decision": "accept" | "reject" | "none", "message": ..., "test": the test it wrote}."""
     # TODO 1.4
     # your code here
-    raise NotImplementedError
+    files = repo_files()
+    with open_sandbox() as (sandbox, workdir):
+        upload_files(sandbox, files, f"{workdir}/original")
+        fixed = files.copy()
+        fixed[fix["path"]] = fix["new_code"]
+        upload_files(sandbox, fixed, f"{workdir}/fixed")
+        agent = create_deep_agent(
+            system_prompt=VERIFIER_PROMPT.format(workdir=workdir),
+            tools=[accept_fix, transfer_to_fixer],
+            model=config.chat(),
+            backend=sandbox
+        )
+        
+        content_for_verifier = issue_text(issue) + f"\n\nThe proposed fix is in {fix['path']}"
+        try:
+            out = agent.invoke({"messages": [HumanMessage(content=content_for_verifier)]}, config={"recursion_limit": 80})
+            decision_result = decision(out["messages"])
+        except GraphRecursionError as e:
+            decision_result = ("none", f"The verifier ran out of steps before it accepted or rejected the fix.")
+        read_tests = read_sandbox_file(sandbox, f"{workdir}/fixed/tests/test_issue.py")
+        return {
+            "decision": decision_result[0],
+            "message": decision_result[1],
+            "test": "" if not read_tests else read_tests
+        }

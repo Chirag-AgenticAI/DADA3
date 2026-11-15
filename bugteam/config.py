@@ -37,7 +37,6 @@ CHAT_BACKEND = os.getenv("CHAT_BACKEND", "gemini")
 OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "qwen3.5:9b")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5")
-NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b")
 
 
 def chat():
@@ -52,9 +51,6 @@ def chat():
     if CHAT_BACKEND == "anthropic":
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(model=ANTHROPIC_MODEL)
-    if CHAT_BACKEND == "nvidia":
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
-        return ChatNVIDIA(model=NVIDIA_MODEL, max_retries=8)
     if CHAT_BACKEND != "gemini":
         raise ValueError(f"CHAT_BACKEND is {CHAT_BACKEND!r}. Use gemini, ollama, openai, or anthropic.")
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -64,4 +60,4 @@ def chat():
 def model_name():
     """The model the current settings use, for the results files."""
     return {"ollama": OLLAMA_CHAT_MODEL, "openai": OPENAI_MODEL,
-            "anthropic": ANTHROPIC_MODEL, "nvidia": NVIDIA_MODEL}.get(CHAT_BACKEND, CHAT_MODEL)
+            "anthropic": ANTHROPIC_MODEL}.get(CHAT_BACKEND, CHAT_MODEL)

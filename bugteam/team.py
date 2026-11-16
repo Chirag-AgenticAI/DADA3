@@ -63,14 +63,56 @@ def triage(state: TeamState) -> dict:
     """Label every issue, one structured-output call per issue."""
     # TODO 2.1
     # your code here
-    raise NotImplementedError
+    files = repo_files()
+    code_files = [f for f in files if f.startswith("huskyutils")]
+
+    code = ""
+    for cf in code_files:
+        code += f"# {cf}\n{files[cf]}\n"
+
+    labels = {}
+    reasons = {}
+
+    triager = config.chat().with_structured_output(Label)
+    for issue in state["issues"]:
+        it = issue_text(issue)
+        prompt = TRIAGE_PROMPT.format(code=code, issue=it)
+        out = retry(triager.invoke, prompt)
+        labels[issue['number']] = out.label
+        reasons[issue['number']] = out.reasoning
+    
+    return {
+        "labels": labels,
+        "reasons": reasons
+    }
 
 
 def fan_out(state: TeamState):
     """One Send per issue triage labeled a bug, or straight to the report if there are none."""
     # TODO 2.2
     # your code here
-    raise NotImplementedError
+    bugs = []
+    for i in state["issues"]:
+        if state["labels"][i["number"]] == "bug":
+            bugs.append(i)
+
+    sends = []
+
+    for b in bugs:
+        sends.append(
+            Send(
+                "fix",
+                {
+                    "issue": b,
+                    "note": state["reasons"][b["number"]]
+                }
+            )
+        )
+
+    if not bugs:
+        return "report"
+    
+    return sends
 
 
 def fix(job: dict) -> dict:
@@ -106,7 +148,9 @@ def summary(state: TeamState) -> str:
     """The paragraph at the top of the report, written by the model from the facts only."""
     # TODO 2.3
     # your code here
-    raise NotImplementedError
+    lines = "\n".join(facts(state))
+    prompt = REPORT_PROMPT.format(facts=lines)
+    return text_of(config.chat().invoke(prompt))
 
 
 def report(state: TeamState) -> dict:
@@ -139,7 +183,15 @@ def report(state: TeamState) -> dict:
 def build_graph():
     # TODO 2.4
     # your code here
-    raise NotImplementedError
+    g = StateGraph(TeamState)
+    g.add_node("triage", triage)
+    g.add_node("fix", fix)
+    g.add_node("report", report)
+    g.add_edge(START, "triage")
+    g.add_conditional_edges("triage", fan_out, ["fix", "report"])    
+    g.add_edge("fix", "report")
+    g.add_edge("report", END)
+    return g.compile()
 
 
 def run(issues, callbacks=None):
